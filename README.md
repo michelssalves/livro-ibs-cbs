@@ -61,6 +61,7 @@ As linhas vêm como listas de valores na ordem de `campos` (mensagem menor que u
 npm ci
 npm start                   # demonstração em http://localhost:4200
 npm run protheus:build      # pacote .app para o RPO
+npm run deploy              # publica a demonstração no GitHub Pages (branch gh-pages)
 ```
 
 ---
