@@ -1,0 +1,43 @@
+/*
+ * Azul do Protheus no lugar do roxo do tema padrão do PO-UI. Os botões, links, foco e seleção
+ * herdam de --color-brand-01-* (o tema define --color-action-* a partir deles).
+ */
+:root {
+  --color-brand-01-base: #0c9abe;
+  --color-brand-01-dark: #0a7c99;
+  --color-brand-01-darker: #075d73;
+  --color-brand-01-darkest: #043e4d;
+  --color-brand-01-light: #74c6db;
+  --color-brand-01-lighter: #b6e1ec;
+  --color-brand-01-lightest: #e7f5f9;
+
+  /* Destaque da reforma tributária (IBS/CBS): âmbar, para não se confundir com o azul do tema. */
+  --cor-reforma: #9a4d00;
+  --cor-reforma-fundo: #fff4e5;
+}
+
+/*
+ * Células das colunas da reforma na tabela. O po-table aplica "po-text-<color>" no conteúdo quando
+ * a coluna tem `color`; as colunas da reforma usam color: 'reforma'. Global porque a célula é do
+ * po-table, fora do CSS encapsulado do componente.
+ */
+/* O po-table pinta o fundo na própria célula (branco/listrado) com seletores mais fortes. */
+po-table td.po-text-reforma {
+  background-color: var(--cor-reforma-fundo) !important;
+}
+
+/* O po-table pinta o texto na div interna da célula: a regra precisa chegar nela. */
+po-table td.po-text-reforma,
+po-table td.po-text-reforma .po-table-column-cell {
+  color: var(--cor-reforma);
+  font-weight: 600;
+}
+
+/*
+ * Verde do Excel no ícone do botão de exportar. Fica aqui (global) porque o ícone é renderizado
+ * dentro do po-button, fora do alcance do CSS encapsulado do componente. Desabilitado, volta ao
+ * cinza do tema.
+ */
+.botao-excel button:not(:disabled) .an-microsoft-excel-logo {
+  color: #217346;
+}

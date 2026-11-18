@@ -1,0 +1,175 @@
+<main class="pagina">
+  <div class="cabecalho">
+    <h1>Livro Fiscal - IBS/CBS <span class="filial" *ngIf="filial">Filial {{ filial }}</span></h1>
+    <po-button
+      p-label="Sair"
+      p-icon="po-icon-exit"
+      p-kind="tertiary"
+      [p-disabled]="exportando"
+      (p-click)="sair()"
+    ></po-button>
+  </div>
+
+  <po-loading-overlay
+    *ngIf="iniciando"
+    [p-screen-lock]="true"
+    [p-text]="'Carregando…'"
+  ></po-loading-overlay>
+
+  <p class="erro" *ngIf="erroInicio">{{ erroInicio }}</p>
+
+  <ng-container *ngIf="!iniciando && !erroInicio">
+    <div class="filtros">
+      <po-input
+        class="filtro-data"
+        name="competencia"
+        p-label="Mês"
+        p-mask="99/9999"
+        p-placeholder="MM/AAAA"
+        [p-disabled]="consultando || exportando"
+        [(ngModel)]="competencia"
+      ></po-input>
+      <po-select
+        class="filtro-select"
+        name="tipoMov"
+        p-label="Tipo de movimento"
+        [p-options]="opcoesTipoMov"
+        [p-disabled]="consultando || exportando"
+        [ngModel]="tipoMov"
+        (p-change)="tipoMov = $event"
+      ></po-select>
+      <po-select
+        class="filtro-select"
+        name="exterior"
+        p-label="Exterior"
+        [p-options]="opcoesExterior"
+        [p-disabled]="consultando || exportando"
+        [ngModel]="exterior"
+        (p-change)="exterior = $event"
+      ></po-select>
+      <po-input
+        class="filtro-codigo"
+        name="participante"
+        p-label="Código cli/forn"
+        [p-optional]="true"
+        p-placeholder="Ex.: 000013"
+        [p-maxlength]="6"
+        [p-disabled]="consultando || exportando"
+        [(ngModel)]="participante"
+      ></po-input>
+      <po-select
+        class="filtro-canceladas"
+        name="canceladas"
+        p-label="Incluir canceladas"
+        [p-options]="opcoesCanceladas"
+        [p-disabled]="consultando || exportando"
+        [ngModel]="canceladas"
+        (p-change)="canceladas = $event"
+      ></po-select>
+      <div class="acoes-filtro botao-alinhado">
+        <po-button
+          p-label="Campos ({{ qtdCamposBuscados }})"
+          p-icon="an an-list-checks"
+          p-kind="secondary"
+          p-tooltip="Escolher quais campos buscar no Protheus"
+          [p-disabled]="consultando || exportando"
+          (p-click)="abrirCampos()"
+        ></po-button>
+        <po-button
+          p-label="Consultar"
+          p-icon="po-icon-search"
+          p-kind="primary"
+          [p-disabled]="exportando"
+          [p-loading]="consultando"
+          (p-click)="consultar()"
+        ></po-button>
+        <po-button
+          *ngIf="consultando"
+          p-label="Cancelar"
+          p-kind="secondary"
+          (p-click)="cancelar()"
+        ></po-button>
+        <po-button
+          class="botao-excel"
+          p-icon="an an-microsoft-excel-logo"
+          p-kind="secondary"
+          p-tooltip="Exportar para Excel (só as colunas visíveis)"
+          [p-disabled]="consultando || linhas.length === 0"
+          [p-loading]="exportando"
+          (p-click)="exportar()"
+        ></po-button>
+      </div>
+    </div>
+
+    <div class="progresso" *ngIf="consultando || exportando">
+      <po-progress [p-value]="progresso" [p-text]="textoProgresso"></po-progress>
+    </div>
+
+    <div class="totais" *ngIf="!consultando && (totaisReforma.length > 0 || linhas.length > 0)">
+      <section class="grupo-totais grupo-reforma" *ngIf="totaisReforma.length > 0">
+        <h2>Reforma tributária</h2>
+        <div class="lista-totais">
+          <div class="total" *ngFor="let total of totaisReforma">
+            <span class="total-titulo">{{ total.titulo }}</span>
+            <span class="total-valor">{{ total.valor | number: total.formato }}</span>
+          </div>
+        </div>
+      </section>
+      <section class="grupo-totais">
+        <h2>Documento e tributos atuais</h2>
+        <div class="lista-totais">
+          <div class="total" *ngFor="let total of totaisAtuais">
+            <span class="total-titulo">{{ total.titulo }}</span>
+            <span class="total-valor">{{ total.valor | number: total.formato }}</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <po-table
+      *ngIf="!consultando"
+      [p-items]="linhas"
+      [p-columns]="colunasTabela"
+      [p-height]="460"
+      [p-striped]="true"
+      p-spacing="small"
+      [p-sort]="true"
+      [p-literals]="literaisTabela"
+      (p-change-visible-columns)="aoMudarColunasVisiveis($event)"
+    ></po-table>
+  </ng-container>
+
+  <po-modal
+    #modalCampos
+    p-title="Campos do relatório"
+    p-size="xl"
+    [p-primary-action]="acaoAplicarCampos"
+    [p-secondary-action]="acaoCancelarCampos"
+  >
+    <p class="explicacao">
+      Marque o que o relatório deve <strong>buscar</strong> no Protheus. Menos campos deixam a consulta mais
+      leve. Para só <strong>esconder</strong> uma coluna buscada, use a engrenagem da tabela; o Excel sai com as
+      colunas visíveis. As escolhas ficam salvas para o seu usuário neste computador.
+    </p>
+    <section class="grupo-campos" [class.grupo-reforma]="escolha.reforma" *ngFor="let escolha of gruposEscolha">
+      <div class="grupo-campos-cabecalho">
+        <h3>{{ escolha.grupo }}</h3>
+        <po-button p-label="Todos" p-kind="tertiary" p-size="small" (p-click)="marcarGrupo(escolha, true)"></po-button>
+        <po-button p-label="Nenhum" p-kind="tertiary" p-size="small" (p-click)="marcarGrupo(escolha, false)"></po-button>
+      </div>
+      <po-checkbox-group
+        [name]="'campos-' + escolha.grupo"
+        [p-options]="escolha.opcoes"
+        [p-columns]="4"
+        [ngModel]="escolha.marcados"
+        (p-change)="escolha.marcados = $event"
+      ></po-checkbox-group>
+    </section>
+    <po-button
+      p-label="Voltar ao padrão"
+      p-kind="tertiary"
+      p-icon="an an-arrow-counter-clockwise"
+      (p-click)="restaurarPadrao()"
+    ></po-button>
+  </po-modal>
+</main>
