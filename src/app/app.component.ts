@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   PoButtonModule,
@@ -14,7 +14,8 @@ import {
   PoSelectOption,
   PoTableColumn,
   PoTableLiterals,
-  PoTableModule
+  PoTableModule,
+  PoTagType
 } from '@po-ui/ng-components';
 import type { LivroDiaEnvelope, LivroInicioEnvelope, LivroValor, WebChannelStatus } from '../main';
 import { COLUNAS, DefinicaoColuna, GRUPO_REFORMA, GRUPOS, GrupoColuna, TOTAIS } from './colunas';
@@ -33,6 +34,11 @@ const ESPERA_INICIO_MS = 30_000;
 /** Tempo sem resposta de um dia até desistir da consulta. */
 const ESPERA_DIA_MS = 120_000;
 
+/** Duração da contagem dos totais ao fim da consulta. */
+const CONTAGEM_MS = 400;
+
+/** Menor altura da tabela, para telas baixas não esmagarem a grade. */
+const ALTURA_MINIMA_TABELA = 280;
 
 const AMBOS = 'A';
 const TODOS = 'T';
@@ -61,7 +67,13 @@ interface Medicao {
 interface Total {
   titulo: string;
   valor: number;
+  /** Valor mostrado durante a contagem; termina igual a `valor`. */
+  exibido: number;
   formato: string;
+  /** Total principal da reforma: aparece maior. */
+  destaque?: boolean;
+  /** Itens sem cálculo: vira aviso e filtra a tabela ao clicar. */
+  alerta?: boolean;
 }
 
 interface GrupoEscolha {
@@ -88,6 +100,18 @@ interface GrupoEscolha {
 })
 export class AppComponent implements OnInit, OnDestroy {
   @ViewChild('modalCampos', { static: true }) private modalCampos?: PoModalComponent;
+  private areaTabela?: ElementRef<HTMLElement>;
+
+  /** A área só existe depois da abertura (fica dentro do *ngIf): ajusta a altura quando ela aparece. */
+  @ViewChild('areaTabela') private set refAreaTabela(area: ElementRef<HTMLElement> | undefined) {
+    const apareceu = area !== undefined && this.areaTabela === undefined;
+
+    this.areaTabela = area;
+
+    if (apareceu) {
+      setTimeout(() => this.ajustarAlturaTabela());
+    }
+  }
 
   protected status: WebChannelStatus = {
     connected: false,
@@ -123,9 +147,15 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected colunasTabela: PoTableColumn[] = [];
   protected readonly literaisTabela: PoTableLiterals = {
-    noData: 'Escolha os filtros e clique em Consultar.'
+    noData: 'Nenhum item para mostrar.'
   };
   protected linhas: LinhaLivro[] = [];
+  /** O que a tabela mostra: todas as linhas ou só os itens sem cálculo. */
+  protected linhasExibidas: LinhaLivro[] = [];
+  protected somenteSemCalculo = false;
+  /** Já houve consulta concluída: distingue "ainda não consultou" de "consultou e não veio nada". */
+  protected consultou = false;
+  protected alturaTabela = 460;
   protected totaisReforma: Total[] = [];
   protected totaisAtuais: Total[] = [];
 
@@ -156,6 +186,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private cancelado = false;
   private esperaInicio?: ReturnType<typeof setTimeout>;
   private esperaDia?: ReturnType<typeof setTimeout>;
+  private quadroContagem = 0;
 
   private readonly statusListener = (event: Event): void => {
     this.status = (event as CustomEvent<WebChannelStatus>).detail;
@@ -189,6 +220,37 @@ export class AppComponent implements OnInit, OnDestroy {
     window.removeEventListener('livroIbsCbsStatus', this.statusListener);
     clearTimeout(this.esperaInicio);
     clearTimeout(this.esperaDia);
+    cancelAnimationFrame(this.quadroContagem);
+  }
+
+  /** A tabela ocupa o que sobra da janela abaixo dela (o po-table precisa da altura em px). */
+  @HostListener('window:resize')
+  protected ajustarAlturaTabela(): void {
+    const topo = this.areaTabela?.nativeElement.getBoundingClientRect().top;
+
+    if (topo === undefined) {
+      return;
+    }
+
+    this.alturaTabela = Math.max(ALTURA_MINIMA_TABELA, Math.floor(window.innerHeight - topo - 16));
+
+    // O p-height é só o corpo: cabeçalho e engrenagem do po-table vêm por cima. Depois de
+    // desenhar, desconta o que passou da janela.
+    setTimeout(() => {
+      const sobra = document.documentElement.scrollHeight - window.innerHeight;
+
+      if (sobra > 0) {
+        this.alturaTabela = Math.max(ALTURA_MINIMA_TABELA, this.alturaTabela - sobra);
+      }
+    });
+  }
+
+  /** Clique no total "Itens sem cálculo": alterna entre todas as linhas e só esses itens. */
+  protected alternarSemCalculo(): void {
+    this.somenteSemCalculo = !this.somenteSemCalculo;
+    this.aplicarFiltroTabela();
+    // A faixa "Mostrando só..." entra ou sai acima da tabela.
+    setTimeout(() => this.ajustarAlturaTabela());
   }
 
   protected usarMesAnterior(): void {
@@ -235,6 +297,8 @@ export class AppComponent implements OnInit, OnDestroy {
     }
 
     this.linhas = [];
+    this.linhasExibidas = [];
+    this.somenteSemCalculo = false;
     this.totaisReforma = [];
     this.totaisAtuais = [];
     this.medicoes = [];
@@ -260,12 +324,13 @@ export class AppComponent implements OnInit, OnDestroy {
 
     this.exportando = true;
     this.progresso = 0;
-    this.textoProgresso = `Gerando Excel com ${this.linhas.length.toLocaleString('pt-BR')} linhas...`;
+    this.textoProgresso = `Gerando Excel com ${this.linhasExibidas.length.toLocaleString('pt-BR')} linhas...`;
 
     try {
       const inicio = performance.now();
 
-      await exportarExcel(this.linhas, colunas, nomeArquivo, percentual => {
+      // O Excel sai com o que a tabela mostra: com o filtro de itens sem cálculo, só eles.
+      await exportarExcel(this.linhasExibidas, colunas, nomeArquivo, percentual => {
         this.progresso = percentual;
       });
 
@@ -349,7 +414,19 @@ export class AppComponent implements OnInit, OnDestroy {
     // Campo retirado some da tabela na hora; campo novo só aparece depois de consultar.
     this.camposCarregados = this.camposCarregados.filter(campo => buscar.includes(campo));
     this.montarColunasTabela();
-    this.calcularTotais();
+    this.calcularTotais(false);
+
+    if (!this.camposCarregados.includes('CALC_REFORMA')) {
+      this.somenteSemCalculo = false;
+    }
+
+    this.aplicarFiltroTabela();
+  }
+
+  private aplicarFiltroTabela(): void {
+    this.linhasExibidas = this.somenteSemCalculo
+      ? this.linhas.filter(linha => linha['CALC_REFORMA'] === 'Não')
+      : this.linhas;
   }
 
   private montarColunasTabela(): void {
@@ -403,8 +480,12 @@ export class AppComponent implements OnInit, OnDestroy {
     this.textoProgresso = '';
     this.progresso = 100;
     this.linhas = [...this.linhas];
+    this.consultou = true;
+    this.aplicarFiltroTabela();
     this.montarColunasTabela();
-    this.calcularTotais();
+    this.calcularTotais(true);
+    // Os totais acabaram de aparecer acima da tabela: recalcula depois que a tela se desenhar.
+    setTimeout(() => this.ajustarAlturaTabela());
 
     if (interrompida) {
       this.notificacao.warning(`Consulta interrompida com ${this.linhas.length.toLocaleString('pt-BR')} itens.`);
@@ -539,25 +620,63 @@ export class AppComponent implements OnInit, OnDestroy {
     return linha;
   }
 
-  private calcularTotais(): void {
+  /** Totais sempre sobre todas as linhas (não sobre o filtro de itens sem cálculo). */
+  private calcularTotais(contar: boolean): void {
     const somar = (campo: string): number =>
       this.linhas.reduce((soma, linha) => soma + (Number(linha[campo]) || 0), 0);
     const buscados = TOTAIS.filter(t => this.camposCarregados.includes(t.campo));
+    const total = (titulo: string, valor: number, formato: string): Total =>
+      ({ titulo, valor, exibido: valor, formato });
 
     this.totaisReforma = buscados.filter(t => t.reforma)
-      .map(t => ({ titulo: t.titulo, valor: somar(t.campo), formato: '1.2-2' }));
+      .map(t => ({ ...total(t.titulo, somar(t.campo), '1.2-2'), destaque: t.campo === 'IBSCBS_TOTAL' }));
     this.totaisAtuais = [
-      { titulo: 'Itens', valor: this.linhas.length, formato: '1.0-0' },
-      ...buscados.filter(t => !t.reforma).map(t => ({ titulo: t.titulo, valor: somar(t.campo), formato: '1.2-2' }))
+      total('Itens', this.linhas.length, '1.0-0'),
+      ...buscados.filter(t => !t.reforma).map(t => total(t.titulo, somar(t.campo), '1.2-2'))
     ];
 
     if (this.camposCarregados.includes('CALC_REFORMA')) {
       this.totaisReforma.push({
-        titulo: 'Itens sem cálculo',
-        valor: this.linhas.filter(linha => linha['CALC_REFORMA'] === 'Não').length,
-        formato: '1.0-0'
+        ...total('Itens sem cálculo', this.linhas.filter(linha => linha['CALC_REFORMA'] === 'Não').length, '1.0-0'),
+        alerta: true
       });
     }
+
+    if (contar) {
+      this.contarTotais();
+    }
+  }
+
+  /** Os totais sobem de zero até o valor. Quem pediu menos movimento no sistema vê o valor direto. */
+  private contarTotais(): void {
+    const totais = [...this.totaisReforma, ...this.totaisAtuais];
+
+    cancelAnimationFrame(this.quadroContagem);
+
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+
+    const inicio = performance.now();
+    const passo = (agora: number): void => {
+      const fracao = Math.min(1, (agora - inicio) / CONTAGEM_MS);
+      // Desacelera no fim (ease-out cúbico).
+      const suave = 1 - Math.pow(1 - fracao, 3);
+
+      for (const t of totais) {
+        t.exibido = fracao < 1 ? t.valor * suave : t.valor;
+      }
+
+      if (fracao < 1) {
+        this.quadroContagem = requestAnimationFrame(passo);
+      }
+    };
+
+    for (const t of totais) {
+      t.exibido = 0;
+    }
+
+    this.quadroContagem = requestAnimationFrame(passo);
   }
 
   private paraColunaTabela(coluna: DefinicaoColuna): PoTableColumn {
@@ -570,6 +689,20 @@ export class AppComponent implements OnInit, OnDestroy {
       color: reforma ? 'reforma' : undefined,
       tooltip: coluna.ajuda
     };
+
+    // "Não" é o caso que pede atenção: etiqueta de aviso; "Sim" fica discreto.
+    if (coluna.campo === 'CALC_REFORMA') {
+      return {
+        ...base,
+        // Sem a classe âmbar da reforma: ela pinta o texto da célula por cima da etiqueta.
+        color: undefined,
+        type: 'label',
+        labels: [
+          { value: 'Sim', label: 'Sim', type: PoTagType.Neutral },
+          { value: 'Não', label: 'Não', type: PoTagType.Warning, tooltip: coluna.ajuda }
+        ]
+      };
+    }
 
     switch (coluna.tipo) {
       case 'N':

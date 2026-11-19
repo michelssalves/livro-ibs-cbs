@@ -94,7 +94,7 @@
           p-icon="an an-microsoft-excel-logo"
           p-kind="secondary"
           p-tooltip="Exportar para Excel (só as colunas visíveis)"
-          [p-disabled]="consultando || linhas.length === 0"
+          [p-disabled]="consultando || linhasExibidas.length === 0"
           [p-loading]="exportando"
           (p-click)="exportar()"
         ></po-button>
@@ -109,10 +109,27 @@
       <section class="grupo-totais grupo-reforma" *ngIf="totaisReforma.length > 0">
         <h2>Reforma tributária</h2>
         <div class="lista-totais">
-          <div class="total" *ngFor="let total of totaisReforma">
-            <span class="total-titulo">{{ total.titulo }}</span>
-            <span class="total-valor">{{ total.valor | number: total.formato }}</span>
-          </div>
+          <ng-container *ngFor="let total of totaisReforma">
+            <button
+              *ngIf="total.alerta && total.valor > 0; else totalSimples"
+              type="button"
+              class="total total-alerta"
+              [class.ativo]="somenteSemCalculo"
+              [attr.aria-pressed]="somenteSemCalculo"
+              [title]="somenteSemCalculo ? 'Mostrar todos os itens' : 'Mostrar só os itens sem cálculo'"
+              (click)="alternarSemCalculo()"
+            >
+              <span class="total-titulo">{{ total.titulo }}</span>
+              <span class="total-valor">{{ total.exibido | number: total.formato }}</span>
+              <span class="total-acao">{{ somenteSemCalculo ? 'Mostrar todos' : 'Filtrar na tabela' }}</span>
+            </button>
+            <ng-template #totalSimples>
+              <div class="total" [class.total-destaque]="total.destaque">
+                <span class="total-titulo">{{ total.titulo }}</span>
+                <span class="total-valor">{{ total.exibido | number: total.formato }}</span>
+              </div>
+            </ng-template>
+          </ng-container>
         </div>
       </section>
       <section class="grupo-totais">
@@ -120,23 +137,46 @@
         <div class="lista-totais">
           <div class="total" *ngFor="let total of totaisAtuais">
             <span class="total-titulo">{{ total.titulo }}</span>
-            <span class="total-valor">{{ total.valor | number: total.formato }}</span>
+            <span class="total-valor">{{ total.exibido | number: total.formato }}</span>
           </div>
         </div>
       </section>
     </div>
 
-    <po-table
-      *ngIf="!consultando"
-      [p-items]="linhas"
-      [p-columns]="colunasTabela"
-      [p-height]="460"
-      [p-striped]="true"
-      p-spacing="small"
-      [p-sort]="true"
-      [p-literals]="literaisTabela"
-      (p-change-visible-columns)="aoMudarColunasVisiveis($event)"
-    ></po-table>
+    <div class="area-tabela" #areaTabela>
+      <div class="filtro-ativo" *ngIf="somenteSemCalculo && !consultando">
+        Mostrando só os {{ linhasExibidas.length | number: '1.0-0' }} itens sem cálculo de IBS/CBS.
+        <po-button p-label="Mostrar todos" p-kind="tertiary" p-size="small" (p-click)="alternarSemCalculo()"></po-button>
+      </div>
+
+      <po-table
+        *ngIf="!consultando && linhas.length > 0"
+        [p-items]="linhasExibidas"
+        [p-columns]="colunasTabela"
+        [p-height]="alturaTabela"
+        [p-striped]="true"
+        p-spacing="small"
+        [p-sort]="true"
+        [p-literals]="literaisTabela"
+        (p-change-visible-columns)="aoMudarColunasVisiveis($event)"
+      ></po-table>
+
+      <div class="vazio" *ngIf="!consultando && linhas.length === 0" [style.min-height.px]="alturaTabela">
+        <ng-container *ngIf="!consultou; else semResultado">
+          <span class="vazio-icone an an-book-open-text" aria-hidden="true"></span>
+          <h2>Livro fiscal com IBS/CBS</h2>
+          <p>
+            Escolha o mês e o tipo de movimento e clique em <strong>Consultar</strong>. O relatório traz o livro item a
+            item, com CBS e IBS ao lado dos tributos atuais.
+          </p>
+        </ng-container>
+        <ng-template #semResultado>
+          <span class="vazio-icone an an-magnifying-glass" aria-hidden="true"></span>
+          <h2>Nenhum item encontrado</h2>
+          <p>Não há movimento para os filtros escolhidos. Confira o mês, o tipo de movimento e o código informado.</p>
+        </ng-template>
+      </div>
+    </div>
   </ng-container>
 
   <po-modal
