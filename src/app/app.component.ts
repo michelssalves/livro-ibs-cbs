@@ -18,6 +18,7 @@ import {
   PoTagType
 } from '@po-ui/ng-components';
 import type { LivroDiaEnvelope, LivroInicioEnvelope, LivroValor, WebChannelStatus } from '../main';
+import { ArrastarRolagemDirective } from './arrastar-rolagem.directive';
 import { COLUNAS, DefinicaoColuna, GRUPO_REFORMA, GRUPOS, GrupoColuna, TOTAIS } from './colunas';
 import { LinhaLivro, exportarExcel } from './exportar-excel';
 import {
@@ -93,7 +94,8 @@ interface GrupoEscolha {
     PoButtonModule,
     PoLoadingModule,
     PoModalModule,
-    PoProgressModule
+    PoProgressModule,
+    ArrastarRolagemDirective
   ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'

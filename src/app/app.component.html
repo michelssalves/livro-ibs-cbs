@@ -143,7 +143,7 @@
       </section>
     </div>
 
-    <div class="area-tabela" #areaTabela>
+    <div class="area-tabela" #areaTabela appArrastarRolagem>
       <div class="filtro-ativo" *ngIf="somenteSemCalculo && !consultando">
         Mostrando só os {{ linhasExibidas.length | number: '1.0-0' }} itens sem cálculo de IBS/CBS.
         <po-button p-label="Mostrar todos" p-kind="tertiary" p-size="small" (p-click)="alternarSemCalculo()"></po-button>

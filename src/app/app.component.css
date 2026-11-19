@@ -168,6 +168,21 @@
   font-size: 0.875rem;
 }
 
+/*
+ * Arrastar a tabela para o lado (diretiva appArrastarRolagem): mãozinha nas células e,
+ * durante o arraste, mão fechada em tudo e sem seleção de texto. ::ng-deep porque as células
+ * são do po-table.
+ */
+.area-tabela ::ng-deep po-table tbody td {
+  cursor: grab;
+}
+
+.area-tabela.arrastando,
+.area-tabela.arrastando ::ng-deep * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
 /* Antes de consultar e consulta sem resultado: explica o próximo passo em vez de uma grade vazia. */
 .vazio {
   display: flex;
